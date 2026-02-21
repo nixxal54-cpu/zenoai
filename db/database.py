@@ -1,12 +1,17 @@
-import aiosqlite
+import asyncpg
 import json
 import uuid
 import time
+from app.core.config import settings
 
-DB_PATH = "zenoai_store.db"
+pool = None
 
 async def init_db():
-    async with aiosqlite.connect(DB_PATH) as db:
+    global pool
+    # Connect to Cloud PostgreSQL
+    pool = await asyncpg.create_pool(settings.DATABASE_URL)
+    
+    async with pool.acquire() as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS sessions (
                 id TEXT PRIMARY KEY, created_at REAL
@@ -24,34 +29,69 @@ async def init_db():
                 tokens REAL, status TEXT, error_msg TEXT
             )
         """)
-        await db.commit()
+        # New table to permanently store your runtime configuration
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS app_config (
+                id INTEGER PRIMARY KEY,
+                config_data JSONB
+            )
+        """)
+        
+        # Insert default config if it's the very first time running
+        existing = await db.fetchval("SELECT COUNT(*) FROM app_config WHERE id = 1")
+        if existing == 0:
+            default_config = {
+              "default_model": "mistralai/mistral-7b-instruct:free",
+              "models": [
+                {"id": "mistralai/mistral-7b-instruct:free", "enabled": True, "timeout": 15},
+                {"id": "meta-llama/llama-3-8b-instruct:free", "enabled": True, "timeout": 15},
+                {"id": "google/gemma-2-9b-it:free", "enabled": True, "timeout": 20},
+                {"id": "huggingfaceh4/zephyr-7b-beta:free", "enabled": True, "timeout": 10}
+              ],
+              "fallback_order": [
+                "mistralai/mistral-7b-instruct:free",
+                "meta-llama/llama-3-8b-instruct:free",
+                "google/gemma-2-9b-it:free",
+                "huggingfaceh4/zephyr-7b-beta:free"
+              ],
+              "retry_count": 2,
+              "max_tokens": 1024,
+              "memory_window": 10,
+              "system_prompt": "You are ZenoAi, an advanced, robust, and concise AI backend system."
+            }
+            await db.execute("INSERT INTO app_config (id, config_data) VALUES (1, $1)", json.dumps(default_config))
+
+async def get_config_db():
+    async with pool.acquire() as db:
+        row = await db.fetchval("SELECT config_data FROM app_config WHERE id = 1")
+        return json.loads(row) if isinstance(row, str) else row
+
+async def update_config_db(new_config: dict):
+    async with pool.acquire() as db:
+        await db.execute("UPDATE app_config SET config_data = $1 WHERE id = 1", json.dumps(new_config))
 
 async def create_session() -> str:
     sess_id = str(uuid.uuid4())
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("INSERT INTO sessions (id, created_at) VALUES (?, ?)", (sess_id, time.time()))
-        await db.commit()
+    async with pool.acquire() as db:
+        await db.execute("INSERT INTO sessions (id, created_at) VALUES ($1, $2)", sess_id, time.time())
     return sess_id
 
 async def save_message(session_id: str, role: str, content: str):
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("INSERT INTO messages (id, session_id, role, content, timestamp) VALUES (?, ?, ?, ?, ?)",
-                         (str(uuid.uuid4()), session_id, role, content, time.time()))
-        await db.commit()
+    async with pool.acquire() as db:
+        await db.execute("INSERT INTO messages (id, session_id, role, content, timestamp) VALUES ($1, $2, $3, $4, $5)",
+                         str(uuid.uuid4()), session_id, role, content, time.time())
 
 async def get_memory(session_id: str, limit: int):
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            "SELECT role, content FROM messages WHERE session_id = ? ORDER BY timestamp DESC LIMIT ?", 
-            (session_id, limit)
-        ) as cursor:
-            rows = await cursor.fetchall()
-            return [{"role": row[0], "content": row[1]} for row in reversed(rows)]
+    async with pool.acquire() as db:
+        rows = await db.fetch(
+            "SELECT role, content FROM messages WHERE session_id = $1 ORDER BY timestamp DESC LIMIT $2", 
+            session_id, limit
+        )
+        return [{"role": row["role"], "content": row["content"]} for row in reversed(rows)]
 
 async def log_metric(session_id: str, model: str, latency: float, fallback: bool, tokens: int, status: str, error: str = ""):
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with pool.acquire() as db:
         await db.execute("""
             INSERT INTO metrics (id, timestamp, session_id, model_used, latency_ms, fallback_triggered, tokens, status, error_msg)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (str(uuid.uuid4()), time.time(), session_id, model, latency, int(fallback), tokens, status, error))
-        await db.commit()
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        """, str(uuid.uuid4()), time.time(), session_id, model, latency, int(fallback), tokens, status, error)
