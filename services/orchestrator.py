@@ -1,12 +1,11 @@
 import time
 import asyncio
-from app.core.config import config_manager
-from app.db.database import get_memory, save_message, log_metric
+from app.db.database import get_memory, save_message, log_metric, get_config_db
 from app.services.llm_client import stream_openrouter
 
 class Orchestrator:
     async def process_chat_stream(self, session_id: str, user_message: str):
-        config = config_manager.get()
+        config = await get_config_db() # Fetch config from Cloud DB
         await save_message(session_id, "user", user_message)
         
         # Build Context Window
@@ -29,12 +28,10 @@ class Orchestrator:
             for attempt in range(max_retries):
                 try:
                     full_response = ""
-                    # L1 & L2: Normal & Retry & Same-Tier Fallback inline
                     async for chunk in stream_openrouter(model, messages, config["max_tokens"], model_conf["timeout"]):
                         full_response += chunk
                         yield chunk
                     
-                    # Success Path
                     latency = (time.time() - start_time) * 1000
                     await save_message(session_id, "assistant", full_response)
                     await log_metric(session_id, model, latency, fallback_triggered, len(full_response)//4, "success")
@@ -42,20 +39,16 @@ class Orchestrator:
                 
                 except Exception as e:
                     print(f"[Warn] Model {model} attempt {attempt+1} failed: {str(e)}")
-                    # Layer 1: Retry exponential backoff
                     await asyncio.sleep(1.5 ** attempt)
             
-            # Layer 2: Move to next model in priority
             print(f"[Fallback] Swapping from {model}")
             fallback_triggered = True
             current_model_idx += 1
             
-            # Layer 3: Degraded Mode if deep into fallbacks
             if current_model_idx == len(fallback_order) - 1:
                 messages[0]["content"] += " (Respond extremely concisely. System is in degraded fallback mode)."
                 config["max_tokens"] = int(config["max_tokens"] / 2)
 
-        # Layer 4: Graceful Failure Output
         error_msg = "\n\n[ZenoAi Alert] All external providers are currently unavailable. Please try again later."
         yield error_msg
         await log_metric(session_id, "none", (time.time()-start_time)*1000, True, 0, "failed", "All models failed")
