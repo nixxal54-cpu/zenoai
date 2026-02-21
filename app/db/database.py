@@ -29,7 +29,6 @@ async def init_db():
                 tokens REAL, status TEXT, error_msg TEXT
             )
         """)
-        # New table to permanently store your runtime configuration
         await db.execute("""
             CREATE TABLE IF NOT EXISTS app_config (
                 id INTEGER PRIMARY KEY,
@@ -37,27 +36,26 @@ async def init_db():
             )
         """)
         
-        # Insert default config if it's the very first time running
         existing = await db.fetchval("SELECT COUNT(*) FROM app_config WHERE id = 1")
         if existing == 0:
             default_config = {
-              "default_model": "mistralai/mistral-7b-instruct:free",
+              "default_model": "google/gemini-2.0-flash-lite-preview-02-05:free",
               "models": [
-                {"id": "mistralai/mistral-7b-instruct:free", "enabled": True, "timeout": 15},
-                {"id": "meta-llama/llama-3-8b-instruct:free", "enabled": True, "timeout": 15},
+                {"id": "google/gemini-2.0-flash-lite-preview-02-05:free", "enabled": True, "timeout": 20},
                 {"id": "google/gemma-2-9b-it:free", "enabled": True, "timeout": 20},
-                {"id": "huggingfaceh4/zephyr-7b-beta:free", "enabled": True, "timeout": 10}
+                {"id": "meta-llama/llama-3-8b-instruct:free", "enabled": True, "timeout": 15},
+                {"id": "mistralai/mistral-7b-instruct:free", "enabled": True, "timeout": 15}
               ],
               "fallback_order": [
-                "mistralai/mistral-7b-instruct:free",
-                "meta-llama/llama-3-8b-instruct:free",
+                "google/gemini-2.0-flash-lite-preview-02-05:free",
                 "google/gemma-2-9b-it:free",
-                "huggingfaceh4/zephyr-7b-beta:free"
+                "meta-llama/llama-3-8b-instruct:free",
+                "mistralai/mistral-7b-instruct:free"
               ],
               "retry_count": 2,
               "max_tokens": 1024,
               "memory_window": 10,
-              "system_prompt": "You are ZenoAi, an advanced, robust, and concise AI backend system."
+              "system_prompt": "You are ZenoAi, an advanced AI backend."
             }
             await db.execute("INSERT INTO app_config (id, config_data) VALUES (1, $1)", json.dumps(default_config))
 
@@ -95,3 +93,27 @@ async def log_metric(session_id: str, model: str, latency: float, fallback: bool
             INSERT INTO metrics (id, timestamp, session_id, model_used, latency_ms, fallback_triggered, tokens, status, error_msg)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         """, str(uuid.uuid4()), time.time(), session_id, model, latency, int(fallback), tokens, status, error)
+
+# --- NEW HELPER FUNCTIONS FOR ADMIN STATS ---
+
+async def get_stats_db():
+    async with pool.acquire() as db:
+        # Get stats for the last hour
+        row = await db.fetchrow("SELECT COUNT(*) as count, AVG(latency_ms) as avg_lat, SUM(fallback_triggered) as fallbacks FROM metrics WHERE timestamp > $1", time.time()-3600)
+        # Get model usage counts
+        rows = await db.fetch("SELECT model_used, COUNT(*) as c FROM metrics GROUP BY model_used ORDER BY c DESC")
+        
+        return {
+            "req_last_hour": row["count"] or 0,
+            "avg_latency": round(row["avg_lat"] or 0, 2) if row["avg_lat"] else 0,
+            "fallback_count": row["fallbacks"] or 0,
+            "model_distribution": [{"model": m["model_used"], "count": m["c"]} for m in rows]
+        }
+
+async def get_live_requests_db():
+    async with pool.acquire() as db:
+        rows = await db.fetch("""
+            SELECT id, timestamp, session_id, model_used, latency_ms, fallback_triggered, status 
+            FROM metrics ORDER BY timestamp DESC LIMIT 20
+        """)
+        return [{"id": r["id"], "time": r["timestamp"], "session": r["session_id"], "model": r["model_used"], "latency": r["latency_ms"], "fallback": bool(r["fallback_triggered"]), "status": r["status"]} for r in rows]
