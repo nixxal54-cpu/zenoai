@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zeno Infrastructure | Admin</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #000000;
+            --fg: #ffffff;
+            --border: #1a1a1a;
+            --muted: #888888;
+            --hover: #0a0a0a;
+        }
+        body { 
+            background-color: var(--bg); 
+            color: var(--fg); 
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        
+        /* Minimalist Scrollbar */
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: var(--bg); }
+        ::-webkit-scrollbar-thumb { background: #333; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+
+        /* Strict Table Styling */
+        th { border-bottom: 1px solid var(--border); font-weight: 500; color: var(--muted); padding-bottom: 0.75rem; }
+        td { border-bottom: 1px solid var(--border); padding: 0.75rem 0; }
+        tr:hover td { background-color: var(--hover); }
+        
+        /* Selection */
+        ::selection { background-color: var(--fg); color: var(--bg); }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col text-sm">
+
+    <!-- Header -->
+    <header class="border-b border-[#1a1a1a] px-6 h-14 flex items-center justify-between sticky top-0 bg-black z-50">
+        <div class="flex items-center gap-8">
+            <div class="flex items-center gap-2">
+                <div class="w-4 h-4 bg-white"></div>
+                <h1 class="font-semibold tracking-tight text-base">Zeno<span class="text-[#888888] font-normal">/Admin</span></h1>
+            </div>
+            
+            <nav class="flex gap-6 h-14" id="main-nav">
+                <button onclick="switchTab('dashboard')" id="tab-dashboard" class="h-full border-b-2 border-white text-white font-medium transition-colors">Overview</button>
+                <button onclick="switchTab('live')" id="tab-live" class="h-full border-b-2 border-transparent text-[#888888] hover:text-white transition-colors">Telemetry</button>
+                <button onclick="switchTab('config')" id="tab-config" class="h-full border-b-2 border-transparent text-[#888888] hover:text-white transition-colors">Configuration</button>
+            </nav>
+        </div>
+        <div class="flex items-center gap-4 text-xs font-mono text-[#888888]">
+            <span class="flex items-center gap-2"><span class="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></span> SYSTEM: ONLINE</span>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 w-full max-w-7xl mx-auto p-6 md:p-10">
+        
+        <!-- DASHBOARD TAB -->
+        <div id="view-dashboard" class="space-y-8 animate-in fade-in duration-300">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="border border-[#1a1a1a] p-5 flex flex-col justify-between h-32 bg-[#050505]">
+                    <span class="text-[#888888] text-xs uppercase tracking-wider font-medium">Throughput (1H)</span>
+                    <span class="text-4xl font-mono tracking-tight" id="stat-req">--</span>
+                </div>
+                <div class="border border-[#1a1a1a] p-5 flex flex-col justify-between h-32 bg-[#050505]">
+                    <span class="text-[#888888] text-xs uppercase tracking-wider font-medium">Global Latency</span>
+                    <div class="flex items-baseline gap-1">
+                        <span class="text-4xl font-mono tracking-tight" id="stat-lat">--</span>
+                        <span class="text-[#888888] font-mono text-sm">ms</span>
+                    </div>
+                </div>
+                <div class="border border-[#1a1a1a] p-5 flex flex-col justify-between h-32 bg-[#050505]">
+                    <span class="text-[#888888] text-xs uppercase tracking-wider font-medium">Router Interventions</span>
+                    <span class="text-4xl font-mono tracking-tight" id="stat-fall">--</span>
+                </div>
+            </div>
+
+            <div class="pt-4">
+                <h2 class="text-xs uppercase tracking-wider font-medium text-[#888888] mb-4">Routing Pool Status</h2>
+                <div class="overflow-x-auto border border-[#1a1a1a]">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="bg-[#050505]">
+                            <tr>
+                                <th class="pl-4 py-3 text-xs uppercase">Model Identifier</th>
+                                <th class="py-3 text-xs uppercase">Requests</th>
+                                <th class="py-3 text-xs uppercase">State</th>
+                            </tr>
+                        </thead>
+                        <tbody id="model-table" class="font-mono text-xs">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- TELEMETRY TAB -->
+        <div id="view-live" class="hidden space-y-4 animate-in fade-in duration-300">
+            <div class="flex justify-between items-end mb-4">
+                <h2 class="text-xs uppercase tracking-wider font-medium text-[#888888]">Live Request Stream</h2>
+                <button onclick="fetchLive()" class="px-3 py-1.5 border border-[#1a1a1a] bg-[#050505] hover:bg-white hover:text-black text-xs font-mono transition-colors">REFRESH</button>
+            </div>
+            <div class="border border-[#1a1a1a] overflow-x-auto">
+                <table class="w-full text-left border-collapse whitespace-nowrap">
+                    <thead class="bg-[#050505]">
+                        <tr>
+                            <th class="pl-4 py-3 text-xs uppercase">Timestamp</th>
+                            <th class="py-3 text-xs uppercase">Session ID</th>
+                            <th class="py-3 text-xs uppercase">Provider/Model</th>
+                            <th class="py-3 text-xs uppercase text-right">Latency</th>
+                            <th class="py-3 text-xs uppercase text-center">Fallback</th>
+                            <th class="pr-4 py-3 text-xs uppercase text-right">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="live-table" class="font-mono text-xs">
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- CONFIGURATION TAB -->
+        <div id="view-config" class="hidden space-y-4 animate-in fade-in duration-300">
+            <div class="flex flex-col gap-2 mb-4">
+                <h2 class="text-xs uppercase tracking-wider font-medium text-[#888888]">Runtime Configuration</h2>
+                <p class="text-xs text-[#666666]">Modifications update the orchestrator in real-time. Invalid JSON will be rejected.</p>
+            </div>
+            
+            <div class="border border-[#1a1a1a] relative group focus-within:border-[#333333] transition-colors">
+                <div class="absolute top-0 right-0 px-3 py-1 border-b border-l border-[#1a1a1a] bg-[#050505] text-[#888888] font-mono text-[10px] uppercase">
+                    runtime_config.json
+                </div>
+                <textarea id="config-editor" class="w-full h-[500px] bg-black text-white p-6 pt-10 font-mono text-sm outline-none resize-none leading-relaxed" spellcheck="false"></textarea>
+            </div>
+            
+            <div class="flex justify-end gap-3 pt-2">
+                <button onclick="fetchConfig()" class="px-5 py-2 border border-[#333333] bg-transparent hover:bg-[#111111] text-xs font-medium transition-colors">Revert</button>
+                <button onclick="saveConfig()" class="px-5 py-2 bg-white text-black hover:bg-[#e5e5e5] text-xs font-medium transition-colors">Deploy Configuration</button>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Core Logic
+        function switchTab(tabId) {
+            ['dashboard', 'live', 'config'].forEach(id => {
+                document.getElementById(`view-${id}`).classList.add('hidden');
+                const btn = document.getElementById(`tab-${id}`);
+                btn.classList.remove('border-white', 'text-white');
+                btn.classList.add('border-transparent', 'text-[#888888]');
+            });
+            
+            document.getElementById(`view-${tabId}`).classList.remove('hidden');
+            const activeBtn = document.getElementById(`tab-${tabId}`);
+            activeBtn.classList.remove('border-transparent', 'text-[#888888]');
+            activeBtn.classList.add('border-white', 'text-white');
+
+            if(tabId === 'dashboard') fetchStats();
+            if(tabId === 'live') fetchLive();
+            if(tabId === 'config') fetchConfig();
+        }
+
+        async function fetchStats() {
+            try {
+                const res = await fetch('/api/admin/stats');
+                const data = await res.json();
+                
+                document.getElementById('stat-req').innerText = data.req_last_hour;
+                document.getElementById('stat-lat').innerText = data.avg_latency.toFixed(0);
+                document.getElementById('stat-fall').innerText = data.fallback_count;
+
+                const tbody = document.getElementById('model-table');
+                tbody.innerHTML = data.model_distribution.map(m => `
+                    <tr>
+                        <td class="pl-4 py-3">${m.model}</td>
+                        <td class="py-3">${m.count}</td>
+                        <td class="py-3"><span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 bg-white rounded-full"></span> ACTIVE</span></td>
+                    </tr>
+                `).join('');
+            } catch(e) { console.error("Stats fetch failed", e); }
+        }
+
+        async function fetchLive() {
+            try {
+                const res = await fetch('/api/admin/requests/live');
+                const data = await res.json();
+                const tbody = document.getElementById('live-table');
+                
+                tbody.innerHTML = data.map(r => `
+                    <tr>
+                        <td class="pl-4 py-3 text-[#888888]">${new Date(r.time * 1000).toISOString().split('T')[1].split('.')[0]}</td>
+                        <td class="py-3 truncate max-w-[120px]">${r.session}</td>
+                        <td class="py-3 truncate max-w-[200px]">${r.model}</td>
+                        <td class="py-3 text-right">${Math.round(r.latency)}ms</td>
+                        <td class="py-3 text-center">${r.fallback ? '<span class="text-white bg-[#1a1a1a] px-2 py-0.5 text-[10px]">ROUTED</span>' : '<span class="text-[#444444]">-</span>'}</td>
+                        <td class="pr-4 py-3 text-right">${r.status === 'success' ? '200 OK' : '<span class="underline decoration-1 underline-offset-2">ERR</span>'}</td>
+                    </tr>
+                `).join('');
+            } catch(e) { console.error("Live fetch failed", e); }
+        }
+
+        async function fetchConfig() {
+            try {
+                const res = await fetch('/api/admin/config');
+                const data = await res.json();
+                document.getElementById('config-editor').value = JSON.stringify(data, null, 2);
+            } catch(e) { console.error("Config fetch failed", e); }
+        }
+
+        async function saveConfig() {
+            const editor = document.getElementById('config-editor');
+            try {
+                const parsed = JSON.parse(editor.value);
+                const res = await fetch('/api/admin/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(parsed)
+                });
+                if(res.ok) {
+                    const btn = document.querySelector('button[onclick="saveConfig()"]');
+                    const originalText = btn.innerText;
+                    btn.innerText = "DEPLOYED ✓";
+                    btn.classList.add('bg-[#1a1a1a]', 'text-white');
+                    setTimeout(() => {
+                        btn.innerText = originalText;
+                        btn.classList.remove('bg-[#1a1a1a]', 'text-white');
+                    }, 2000);
+                }
+            } catch (e) {
+                alert('CONFIG ERROR: Invalid JSON payload.');
+            }
+        }
+
+        // Initialize
+        fetchStats();
+        setInterval(fetchStats, 5000);
+    </script>
+</body>
+</html>
