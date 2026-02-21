@@ -1,0 +1,19 @@
+{
+  "default_model": "mistralai/mistral-7b-instruct:free",
+  "models": [
+    {"id": "mistralai/mistral-7b-instruct:free", "enabled": true, "timeout": 15},
+    {"id": "meta-llama/llama-3-8b-instruct:free", "enabled": true, "timeout": 15},
+    {"id": "google/gemma-2-9b-it:free", "enabled": true, "timeout": 20},
+    {"id": "huggingfaceh4/zephyr-7b-beta:free", "enabled": true, "timeout": 10}
+  ],
+  "fallback_order": [
+    "mistralai/mistral-7b-instruct:free",
+    "meta-llama/llama-3-8b-instruct:free",
+    "google/gemma-2-9b-it:free",
+    "huggingfaceh4/zephyr-7b-beta:free"
+  ],
+  "retry_count": 2,
+  "max_tokens": 1024,
+  "memory_window": 10,
+  "system_prompt": "You are ZenoAi, an advanced, robust, and concise AI backend system."
+}
