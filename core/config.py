@@ -1,9 +1,9 @@
-import json
 import os
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     OPENROUTER_API_KEY: str
+    DATABASE_URL: str
     ENVIRONMENT: str = "production"
     
     class Config:
