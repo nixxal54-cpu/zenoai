@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from app.db.database import get_config_db, update_config_db, get_stats_db, get_live_requests_db
 
 admin_router = APIRouter(prefix="/api/admin")
@@ -12,7 +12,8 @@ async def get_config():
     return await get_config_db()
 
 @admin_router.post("/config")
-async def update_config(new_config: dict):
+async def update_config(request: Request):
+    new_config = await request.json()
     await update_config_db(new_config)
     return {"status": "success"}
 
