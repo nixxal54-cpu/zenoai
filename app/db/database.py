@@ -62,7 +62,10 @@ async def init_db():
 async def get_config_db():
     async with pool.acquire() as db:
         row = await db.fetchval("SELECT config_data FROM app_config WHERE id = 1")
-        return json.loads(row) if isinstance(row, str) else row
+        config = json.loads(row) if isinstance(row, str) else row
+        print(f"[Config] Type: {type(config)} | Keys: {list(config.keys()) if isinstance(config, dict) else 'NOT A DICT'}")
+        print(f"[Config] fallback_order: {config.get('fallback_order')}")
+        return config
 
 async def update_config_db(new_config: dict):
     async with pool.acquire() as db:
