@@ -1,11 +1,12 @@
 import time
 import asyncio
+import traceback
 from app.db.database import get_memory, save_message, log_metric, get_config_db
 from app.services.llm_client import stream_openrouter
 
 class Orchestrator:
     async def process_chat_stream(self, session_id: str, user_message: str):
-        config = await get_config_db() # Fetch config from Cloud DB
+        config = await get_config_db()
         await save_message(session_id, "user", user_message)
         
         # Build Context Window
@@ -38,7 +39,7 @@ class Orchestrator:
                     return
                 
                 except Exception as e:
-                    print(f"[Warn] Model {model} attempt {attempt+1} failed: {str(e)}")
+                    print(f"[Warn] Model {model} attempt {attempt+1} failed:\n{traceback.format_exc()}")
                     await asyncio.sleep(1.5 ** attempt)
             
             print(f"[Fallback] Swapping from {model}")
