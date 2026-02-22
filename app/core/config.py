@@ -1,5 +1,5 @@
 import os
-import os
+import json
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
@@ -29,11 +29,11 @@ class RuntimeConfigManager:
                 self._last_mtime = current_mtime
             return self._cache
         except Exception:
-            return self._cache # Return last known good config on error
+            return self._cache  # Return last known good config on error
 
     def update(self, new_config: dict):
         with open(self.config_path, "w") as f:
             json.dump(new_config, f, indent=2)
-        self._last_mtime = 0 # Force reload next time
+        self._last_mtime = 0  # Force reload next time
 
 config_manager = RuntimeConfigManager()
