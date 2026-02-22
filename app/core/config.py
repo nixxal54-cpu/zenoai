@@ -1,8 +1,10 @@
 import os
+import os
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    OPENROUTER_API_KEY: str
+    OPENROUTER_API_KEY: str = ""
+    GOOGLE_API_KEY: str
     DATABASE_URL: str
     ENVIRONMENT: str = "production"
     
